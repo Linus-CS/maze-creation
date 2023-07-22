@@ -2,58 +2,87 @@ let canvas = document.getElementById("maze");
 
 let ctx = canvas.getContext("2d");
 
-function drawCircle(x, y, radius, color) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-}
 
 const count = 20;
 const xOffset = canvas.width / count;
 const yOffset = canvas.height / count;
-const dots = []
+const vertices = [];
 
-for (let row = 1; row < count; row++) {
-    for (let column = 1; column < count; column++) {
-        dots.push([column * xOffset, row * yOffset, 'black'])
+const lines = new Set();
+const goals = new Set();
+
+function init() {
+}
+
+function generate() {
+    goals.add(Math.floor(Math.random() * count * count));
+    const row = goals.values().next().value % count;
+    const col = Math.floor(goals.values().next().value / count);
+    ctx.fillStyle = "red";
+    ctx.fillRect(row * xOffset, col * yOffset, xOffset, yOffset)
+    ctx.fillStyle = "green";
+    ctx.fillRect(0, 0, xOffset, yOffset)
+    while (goals.size < count * count) {
+        const [first, path] = createPath();
+        travaersePath(first, path);
     }
 }
 
-function getMousePosition(canvas, event) {
-    let rect = canvas.getBoundingClientRect();
-    let x = event.clientX - rect.left;
-    let y = event.clientY - rect.top;
-    checkDot(x, y)
+function createPath() {
+    const path = new Map();
+
+    let first;
+    do first = Math.floor(Math.random() * count * count);
+    while (goals.has(first));
+
+    let current = first;
+    let i = 0;
+    while (!goals.has(current)) {
+        let directions = [current - 1, current + 1, current - count, current + count].filter(v => v >= 0 && v < count * count);
+        directions = directions.filter(v => (current % count) == (v % count) || Math.floor(current / count) == Math.floor(v / count));
+        const next = directions[Math.floor(Math.random() * directions.length)];
+        path.set(current, next);
+        current = next;
+    }
+    return [first, path];
 }
 
-function render() {
-    for (const dot of dots) {
-        drawCircle(dot[0], dot[1], 1, dot[2]);
+function travaersePath(first, path) {
+    let last, current = first;
+    while (!goals.has(current)) {
+        const next = path.get(current);
+        let borders = [current + 1, current - 1, current + count, current - count].filter(v => ![last, next].includes(v));
+        borders = borders.filter(v => v >= 0 && v < count * count);
+        borders = borders.filter(v => (current % count) == (v % count) || Math.floor(current / count) == Math.floor(v / count))
+        wallBetween(current, next, "white");
+        borders.map(n => wallBetween(current, n, "black"));
+        goals.add(current);
+        last = current;
+        current = next;
     }
 }
 
-let first = null;
+generate();
 
-function checkDot(x, y) {
-    for (const dot of dots) {
-        if (dot[0] + 10 < x || dot[0] - 10 > x || dot[1] + 10 < y || dot[1] - 10 > y)
-            continue;
-        dot[2] = "#33FF33";
-        if (first === null) {
-            first = dot;
-        } else {
-            first[2] = "black";
-            dot[2] = "black";
-            drawLine(first, dot);
-            first = null;
-        }
-    }
-    render();
+function wallBetween(box1, box2, color = "black") {
+    const row1 = Math.floor(box1 / count);
+    const col1 = box1 % count;
+    const row2 = Math.floor(box2 / count);
+    const col2 = box2 % count;
+
+    const rmBuffer = 5;
+
+    if (col1 + 1 === col2)
+        drawLine([col2 * xOffset, row1 * yOffset - rmBuffer], [col2 * xOffset, (row2 + 1) * yOffset + rmBuffer], color);
+    if (col1 - 1 === col2)
+        drawLine([col1 * xOffset, row1 * yOffset - rmBuffer], [col1 * xOffset, (row2 + 1) * yOffset + rmBuffer], color);
+    if (row1 + 1 === row2)
+        drawLine([col1 * xOffset - rmBuffer, row2 * yOffset], [(col2 + 1) * xOffset + rmBuffer, row2 * yOffset], color);
+    if (row1 - 1 === row2)
+        drawLine([col1 * xOffset - rmBuffer, row1 * yOffset], [(col2 + 1) * xOffset + rmBuffer, row1 * yOffset], color);
+
 }
+
 
 function drawLine(dot1, dot2, color = "black") {
     if (dot1[0] !== dot2[0] && dot1[1] !== dot2[1]) {
@@ -67,77 +96,10 @@ function drawLine(dot1, dot2, color = "black") {
     ctx.stroke();
 }
 
-canvas.onmousedown = (event) => getMousePosition(canvas, event);
 
-const boxes = []
-
-function init() {
-    for (let row = 0; row < count; row++) {
-        for (let column = 0; column < count; column++) {
-            boxes.push({ row, column, lines: [], neighbours: [] });
-        }
-    }
-
-    for (const box of boxes) {
-        box.lines.push({ first: { x: box.column * xOffset, y: box.row * yOffset }, second: { x: box.column * xOffset, y: (box.row + 1) * yOffset } });
-        box.lines.push({ first: { x: box.column * xOffset, y: (box.row + 1) * yOffset }, second: { x: (box.column + 1) * xOffset, y: (box.row + 1) * yOffset } });
-        box.lines.push({ first: { x: box.column * xOffset, y: box.row * yOffset }, second: { x: (box.column + 1) * xOffset, y: box.row * yOffset } });
-        box.lines.push({ first: { x: (box.column + 1) * xOffset, y: box.row * yOffset }, second: { x: (box.column + 1) * xOffset, y: (box.row + 1) * yOffset } });
-    }
-
-    for (const box1 of boxes) {
-        for (const box2 of boxes) {
-            if (box2.row == box1.row + 1 && box2.column == box1.column) {
-                box1.neighbours.push(box2);
-            }
-            if (box2.row == box1.row - 1 && box2.column == box1.column) {
-                box1.neighbours.push(box2);
-            }
-            if (box2.row == box1.row && box2.column == box1.column + 1) {
-                box1.neighbours.push(box2);
-            }
-            if (box2.row == box1.row && box2.column == box1.column - 1) {
-                box1.neighbours.push(box2);
-            }
-        }
-    }
-
+function fillOutline() {
+    drawLine([0, 0], [xOffset * count, 0]);
+    drawLine([0, 0], [0, yOffset * count]);
+    drawLine([xOffset * count, 0], [xOffset * count, yOffset * count]);
+    drawLine([0, yOffset * count], [xOffset * count, yOffset * count]);
 }
-
-function generate() {
-    const stack = [Math.floor(Math.random() * boxes.length)]
-    const visited = [stack[0]];
-
-    while (stack.length != 0) {
-        const current = stack.pop();
-        const neighbour = someNeighbour(current, visited);
-        if (neighbour !== null) {
-            visited.push(neighbour)
-            stack.push(current);
-            stack.push(neighbour);
-            drawLine(current)
-        }
-    }
-}
-
-function fill() {
-    for (let i = 1; i < count; i++) {
-        drawLine([xOffset * i, 0, "black"], [xOffset * i, yOffset * (yOffset - 1), "black"]);
-        drawLine([0, yOffset * i, "black"], [xOffset * count, yOffset * i, "black"]);
-    }
-}
-
-function someNeighbour(box, visited) {
-    for (const neighbour of box.neighbours) {
-        if (!visited.includes(neighbour)) {
-            return neighbour;
-        }
-    }
-    return null;
-}
-
-
-// init();
-// generate();
-// fill();
-render();
